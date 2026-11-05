@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -137,7 +138,24 @@ def snapshot(tab_id):
 
 
 def links(tab_id):
-    return request("GET", tab_path(tab_id, "/links") + "?userId=" + USER_ID).get("links", [])
+    return request("GET", tab_path(tab_id, "/links") + "?userId=" + USER_ID + "&limit=200").get("links", [])
+
+
+def settle_search(tab_id):
+    """DuckDuckGo renders results after load and adds ia= to its URL once they are in."""
+    shot = snapshot(tab_id)
+    waited = False
+    for _ in range(12):
+        url = shot.get("url") or ""
+        if urllib.parse.urlsplit(url).hostname != "duckduckgo.com" or "ia=" in url:
+            break
+        waited = True
+        time.sleep(1)
+        shot = snapshot(tab_id)
+    if waited:
+        time.sleep(1)
+        shot = snapshot(tab_id)
+    return shot
 
 
 def browser(args):
@@ -155,13 +173,13 @@ def browser(args):
                 with contextlib.suppress(Exception):
                     close_tab(tab_id)
                 raise
-        shot = snapshot(tab_id)
+        shot = settle_search(tab_id) if args.action == "search" else snapshot(tab_id)
         status = "blocked_by_challenge" if CHALLENGE.search(shot.get("snapshot", "")) else "ok"
         result = {"status": status, "tab_id": tab_id, "url": shot.get("url"),
                   "snapshot": shot.get("snapshot", "")[:20000]}
         if args.action == "search":
             result["search_postcode"] = postcode
-            candidates = []
+            candidates = {}
             for link in links(tab_id):
                 try:
                     dest = public_url(link.get("url") or link.get("href") or "")
@@ -182,10 +200,15 @@ def browser(args):
                         continue
                 if host == "duckduckgo.com" or host.endswith(".duckduckgo.com"):
                     continue
-                candidates.append({"title": link.get("text", "")[:180], "url": dest})
+                title = link.get("text", "")[:180]
+                if dest in candidates:
+                    if len(title) > len(candidates[dest]["title"]):
+                        candidates[dest]["title"] = title
+                    continue
                 if len(candidates) >= 15:
                     break
-            result["links"] = candidates
+                candidates[dest] = {"title": title, "url": dest}
+            result["links"] = list(candidates.values())
         return result
     if args.action == "snapshot":
         shot = snapshot(args.tab_id)

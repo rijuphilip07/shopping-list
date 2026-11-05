@@ -149,10 +149,26 @@ class TrackerTest(unittest.TestCase):
                  {"url": "https://duckduckgo.com/about", "text": "About"}]
         with patch.object(riju, "new_tab", return_value="tab-1"), \
              patch.object(riju, "request", return_value={}), \
-             patch.object(riju, "snapshot", return_value={"url": "https://duckduckgo.com/", "snapshot": "Results"}), \
+             patch.object(riju, "snapshot", return_value={"url": "https://duckduckgo.com/?q=camera&ia=web", "snapshot": "Results"}), \
              patch.object(riju, "links", return_value=found):
             result = riju.browser(args)
         self.assertEqual(result["links"], [{"title": "Camera", "url": "https://www.jbhifi.com.au/products/camera"}])
+
+    def test_search_waits_for_results_and_dedupes(self):
+        args = SimpleNamespace(action="search", query="camera")
+        found = [{"url": "https://www.jbhifi.com.au/products/camera", "text": "jbhifi"},
+                 {"url": "https://www.jbhifi.com.au/products/camera", "text": "Camera at JB Hi-Fi"}]
+        shots = [{"url": "https://duckduckgo.com/?q=camera", "snapshot": "Loading"},
+                 {"url": "https://duckduckgo.com/?q=camera&ia=web", "snapshot": "Results"},
+                 {"url": "https://duckduckgo.com/?q=camera&ia=web", "snapshot": "Results"}]
+        with patch.object(riju, "new_tab", return_value="tab-1"), \
+             patch.object(riju, "request", return_value={}), \
+             patch.object(riju, "snapshot", side_effect=shots), \
+             patch.object(riju, "links", return_value=found), \
+             patch.object(riju.time, "sleep"):
+            result = riju.browser(args)
+        self.assertEqual(result["snapshot"], "Results")
+        self.assertEqual(result["links"], [{"title": "Camera at JB Hi-Fi", "url": "https://www.jbhifi.com.au/products/camera"}])
 
 
 if __name__ == "__main__":
