@@ -30,6 +30,33 @@
           "price": 4.95
         }
       ]
+    },
+    {
+      "id": "525b985e053e",
+      "name": "Momcozy KleanPal Pro Baby Bottle Washer and Sterilizer",
+      "url": "https://au.momcozy.com/products/momcozy-kleanpal-pro-baby-bottle-washer?variant=43449318277183",
+      "retailer": "au.momcozy.com",
+      "postcode": "3820",
+      "postcode_visible": false,
+      "currency": "AUD",
+      "target_price": 494.99,
+      "drop_percent": 10,
+      "initial_price": 549.99,
+      "current_price": 549.99,
+      "last_checked_at": "2026-11-05T11:44:20+00:00",
+      "status": "ok",
+      "availability": "https://schema.org/InStock",
+      "evidence": "jsonld_product_offer",
+      "last_error": null,
+      "failure_count": 0,
+      "last_alert_price": null,
+      "created_at": "2026-11-05T11:44:20+00:00",
+      "price_history": [
+        {
+          "at": "2026-11-05T11:44:20+00:00",
+          "price": 549.99
+        }
+      ]
     }
   ]
 }
