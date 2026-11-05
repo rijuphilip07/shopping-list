@@ -164,7 +164,7 @@ def browser(args):
             candidates = []
             for link in links(tab_id):
                 try:
-                    dest = public_url(link.get("href", ""))
+                    dest = public_url(link.get("url") or link.get("href") or "")
                 except ValueError:
                     continue
                 host = urllib.parse.urlsplit(dest).hostname or ""
@@ -180,6 +180,8 @@ def browser(args):
                     host = urllib.parse.urlsplit(dest).hostname or ""
                     if host.endswith("google.com") or host.endswith("google.com.au"):
                         continue
+                if host == "duckduckgo.com" or host.endswith(".duckduckgo.com"):
+                    continue
                 candidates.append({"title": link.get("text", "")[:180], "url": dest})
                 if len(candidates) >= 15:
                     break

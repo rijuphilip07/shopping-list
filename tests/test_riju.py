@@ -143,5 +143,17 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(api.call_args.args[2]["query"], "camera Australia 3820")
 
 
+    def test_search_reads_camofox_link_shape(self):
+        args = SimpleNamespace(action="search", query="camera")
+        found = [{"url": "https://www.jbhifi.com.au/products/camera", "text": "Camera"},
+                 {"url": "https://duckduckgo.com/about", "text": "About"}]
+        with patch.object(riju, "new_tab", return_value="tab-1"), \
+             patch.object(riju, "request", return_value={}), \
+             patch.object(riju, "snapshot", return_value={"url": "https://duckduckgo.com/", "snapshot": "Results"}), \
+             patch.object(riju, "links", return_value=found):
+            result = riju.browser(args)
+        self.assertEqual(result["links"], [{"title": "Camera", "url": "https://www.jbhifi.com.au/products/camera"}])
+
+
 if __name__ == "__main__":
     unittest.main()
