@@ -57,6 +57,33 @@
           "price": 549.99
         }
       ]
+    },
+    {
+      "id": "9b8411187b5d",
+      "name": "Huggies Skin Protect Newborn Nappies Size 1 54 Pack",
+      "url": "https://www.woolworths.com.au/shop/productdetails/569376/huggies-skin-protect-newborn-nappies-size-1-up-to-5kg-",
+      "retailer": "www.woolworths.com.au",
+      "postcode": "3820",
+      "postcode_visible": false,
+      "currency": "AUD",
+      "target_price": 12.96,
+      "drop_percent": 10,
+      "initial_price": 14.4,
+      "current_price": 14.4,
+      "last_checked_at": "2026-11-05T11:59:17+00:00",
+      "status": "ok",
+      "availability": "http://schema.org/InStock",
+      "evidence": "jsonld_product_offer",
+      "last_error": null,
+      "failure_count": 0,
+      "last_alert_price": null,
+      "created_at": "2026-11-05T11:59:17+00:00",
+      "price_history": [
+        {
+          "at": "2026-11-05T11:59:17+00:00",
+          "price": 14.4
+        }
+      ]
     }
   ]
 }
