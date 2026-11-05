@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f1e9">
+  <title>Riju · Product watch</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">R</span><span>RIJU<span class="brand-light"> / WATCH</span></span></div>
+      <span class="eyebrow">A quiet place for things worth waiting for</span>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="kicker">PRODUCT WATCHLIST <span class="kicker-line"></span> LIVE FROM GITHUB</p>
+          <h1 id="page-title">Better prices.<br><em>On your time.</em></h1>
+          <p class="lede">The products you care about, with a clear view of today’s price and the price you’re waiting for.</p>
+        </div>
+        <div class="hero-side">
+          <div class="hero-orbit" aria-hidden="true"><span>↘</span></div>
+          <p>Ask your Hermes agent on Telegram to find a product, then tell it to track the one you choose.</p>
+          <p class="postcode-note">Requested postcode <strong id="postcode">3820</strong></p>
+        </div>
+      </section>
+
+      <section class="summary" aria-label="Watchlist summary">
+        <div class="summary-cell"><span class="summary-label">TRACKED PRODUCTS</span><strong id="count">—</strong></div>
+        <div class="summary-cell"><span class="summary-label">AT OR BELOW TARGET</span><strong id="at-target">—</strong></div>
+        <div class="summary-cell"><span class="summary-label">LAST UPDATED</span><strong id="updated">—</strong></div>
+      </section>
+
+      <section class="list-section" aria-labelledby="watch-heading">
+        <div class="section-head">
+          <div><p class="kicker">THE LIST</p><h2 id="watch-heading">Your watchlist</h2></div>
+          <label class="search-wrap"><span class="sr-only">Filter products</span><span aria-hidden="true">⌕</span><input id="filter" type="search" placeholder="Find a product or store"></label>
+        </div>
+        <p id="message" class="message" role="status">Loading products…</p>
+        <div id="products" class="products"></div>
+      </section>
+    </main>
+
+    <footer><span>RIJU / WATCH</span><span>Prices are snapshots. Check the retailer before buying.</span></footer>
+  </div>
+</body>
+</html>
