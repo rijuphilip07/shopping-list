@@ -27,6 +27,8 @@ DATA = ROOT / "data" / "products.json"
 API = os.environ.get("CAMOFOX_URL", "http://127.0.0.1:9377").rstrip("/")
 USER_ID = "riju"
 DEFAULT_POSTCODE = "3820"
+DEFAULT_STORES = ("jbhifi.com.au", "thegoodguys.com.au", "harveynorman.com.au",
+                  "amazon.com.au", "officeworks.com.au")
 CHALLENGE = re.compile(r"captcha|verify you are human|cloudflare.*challenge|access denied|robot check|unusual traffic", re.I)
 PRICE_JS = r"""(() => {
   const meta = {};
@@ -335,6 +337,77 @@ def scrape(url):
             close_tab(tab_id)
 
 
+def store_domain(value):
+    domain = value.strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]*\.[a-z]{2,}", domain) or ".." in domain:
+        raise ValueError("--store must be a retailer domain such as jbhifi.com.au")
+    return domain
+
+
+def same_store(url, domain):
+    host = urllib.parse.urlsplit(url).hostname or ""
+    return host == domain or host.endswith("." + domain)
+
+
+def model_matches(name, model):
+    if not model:
+        return False
+    parts = re.findall(r"[a-z0-9]+", model.lower())
+    if not parts:
+        return False
+    pattern = r"(?<![a-z0-9])" + r"[\W_]*".join(map(re.escape, parts)) + r"(?![a-z0-9])"
+    return bool(re.search(pattern, name or "", re.I))
+
+
+def compare_prices(args):
+    stores = list(dict.fromkeys(store_domain(x) for x in (args.store or DEFAULT_STORES)))
+    if not 2 <= len(stores) <= 8:
+        raise ValueError("Compare 2 to 8 distinct retailer domains")
+    if args.max_per_store not in (1, 2, 3):
+        raise ValueError("--max-per-store must be 1, 2, or 3")
+    offers, problems = [], []
+    for store in stores:
+        try:
+            found = browser(argparse.Namespace(action="search", query=f'{args.query} site:{store}'))
+            try:
+                if found["status"] != "ok":
+                    problems.append({"store": store, "reason": found["status"]})
+                    continue
+                candidates = []
+                for link in found.get("links", []):
+                    url = canonical_url(link["url"])
+                    if same_store(url, store) and url not in candidates:
+                        candidates.append(url)
+                if not candidates:
+                    problems.append({"store": store, "reason": "No direct retailer links found"})
+                for url in candidates[:args.max_per_store]:
+                    try:
+                        item = scrape(url)
+                        identity = "model_matched" if model_matches(item.get("name"), args.model) else (
+                            "model_mismatch" if args.model else "identity_review_required")
+                        offers.append({"store": store, "url": item.get("url") or url,
+                                       "name": item.get("name"), "price": item.get("price"),
+                                       "currency": item.get("currency"), "status": item.get("status"),
+                                       "availability": item.get("availability"), "evidence": item.get("evidence"),
+                                       "identity": identity, "postcode_visible": item.get("postcode_visible", False)})
+                    except (RuntimeError, ValueError, OSError) as exc:
+                        problems.append({"store": store, "url": url, "reason": str(exc)[:200]})
+            finally:
+                with contextlib.suppress(Exception):
+                    close_tab(found["tab_id"])
+        except (RuntimeError, ValueError, OSError) as exc:
+            problems.append({"store": store, "reason": str(exc)[:200]})
+    comparable = [item for item in offers if item["status"] == "ok" and
+                  item["identity"] == "model_matched" and item["currency"] and
+                  available(item["availability"])]
+    comparable.sort(key=lambda item: (item["currency"], item["price"]))
+    return {"query": args.query, "model": args.model, "requested_postcode": configured_postcode(),
+            "stores_searched": stores, "comparable_offers": comparable,
+            "other_candidates": [item for item in offers if item not in comparable],
+            "problems": problems,
+            "note": "Compare only exact model matches with the same currency. Verify variant, stock, shipping, and selected postcode before tracking."}
+
+
 def load_data():
     if not DATA.exists():
         return {"schema_version": 1, "settings": {"postcode": DEFAULT_POSTCODE}, "products": []}
@@ -521,6 +594,10 @@ def parser():
     pr = sub.add_parser("price")
     ps = pr.add_subparsers(dest="action", required=True)
     sc = ps.add_parser("scrape"); sc.add_argument("url")
+    co = ps.add_parser("compare"); co.add_argument("query")
+    co.add_argument("--model", help="Exact model code required for automatic like-for-like ranking")
+    co.add_argument("--store", action="append", help="Retailer domain; repeat for 2-8 stores")
+    co.add_argument("--max-per-store", type=int, default=2)
     sh = sub.add_parser("shopping")
     ss = sh.add_subparsers(dest="action", required=True)
     ss.add_parser("list")
@@ -546,7 +623,7 @@ def main():
     if args.command == "browser":
         result = browser(args)
     elif args.command == "price":
-        result = scrape(args.url)
+        result = scrape(args.url) if args.action == "scrape" else compare_prices(args)
     elif args.command == "shopping":
         result = shopping(args)
     else:

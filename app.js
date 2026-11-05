@@ -68,7 +68,7 @@ function render() {
   const query = $('filter').value.trim().toLowerCase();
   const visible = allProducts.filter(p => `${p.name || ''} ${p.retailer || ''}`.toLowerCase().includes(query));
   $('products').replaceChildren(...visible.map(card));
-  $('message').textContent = !allProducts.length ? 'No products yet. Ask the Hermes agent on Telegram to find one, then tell it to track it.' : !visible.length ? 'No products match your search.' : '';
+  $('message').textContent = !allProducts.length ? 'No store listings yet. Ask the Hermes agent on Telegram to compare retailers, then tell it which listings to track.' : !visible.length ? 'No listings match your search.' : '';
 }
 async function load() {
   try {

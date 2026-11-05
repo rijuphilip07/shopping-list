@@ -14,6 +14,10 @@ spec.loader.exec_module(riju)
 
 
 class PriceParsingTest(unittest.TestCase):
+    def test_model_match_accepts_separator_variants_but_not_longer_codes(self):
+        self.assertTrue(riju.model_matches("Sony WH1000XM5 headphones", "WH-1000XM5"))
+        self.assertFalse(riju.model_matches("Sony WH-1000XM50 headphones", "WH-1000XM5"))
+
     def test_structured_offer_is_used_and_visible_text_is_not(self):
         page = {
             "title": "A product",
@@ -141,6 +145,32 @@ class TrackerTest(unittest.TestCase):
             result = riju.browser(args)
         self.assertEqual(result["search_postcode"], "3820")
         self.assertEqual(api.call_args.args[2]["query"], "camera Australia 3820")
+
+    def test_compare_searches_multiple_stores_and_requires_exact_model(self):
+        searches, closed = [], []
+        def fake_browser(args):
+            searches.append(args.query)
+            store = args.query.split("site:")[1]
+            return {"status": "ok", "tab_id": store, "links": [
+                {"url": f"https://www.{store}/product", "title": "Headphones"}]}
+        def fake_scrape(url):
+            is_jb = "jbhifi" in url
+            return {"status": "ok", "url": url,
+                    "name": "Sony WH-1000XM5" if is_jb else "Sony WH-1000XM4",
+                    "price": 399.0 if is_jb else 299.0, "currency": "AUD",
+                    "evidence": "jsonld_product_offer", "availability": "InStock"}
+        args = SimpleNamespace(query="Sony WH-1000XM5", model="WH-1000XM5",
+                               store=["jbhifi.com.au", "thegoodguys.com.au"], max_per_store=2)
+        with patch.object(riju, "browser", side_effect=fake_browser), \
+             patch.object(riju, "scrape", side_effect=fake_scrape), \
+             patch.object(riju, "close_tab", side_effect=closed.append):
+            result = riju.compare_prices(args)
+        self.assertEqual(len(searches), 2)
+        self.assertTrue(all("site:" in query for query in searches))
+        self.assertEqual(len(result["comparable_offers"]), 1)
+        self.assertEqual(result["comparable_offers"][0]["price"], 399.0)
+        self.assertEqual(result["other_candidates"][0]["identity"], "model_mismatch")
+        self.assertEqual(len(closed), 2)
 
 
     def test_search_reads_camofox_link_shape(self):
