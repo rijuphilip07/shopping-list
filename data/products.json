@@ -3,5 +3,33 @@
   "settings": {
     "postcode": "3820"
   },
-  "products": []
+  "products": [
+    {
+      "id": "87b91feff44d",
+      "name": "Coles Full Cream Milk 3L",
+      "url": "https://www.coles.com.au/product/coles-full-cream-milk-3l-8150288",
+      "retailer": "www.coles.com.au",
+      "postcode": "3820",
+      "postcode_visible": false,
+      "currency": "AUD",
+      "target_price": 4.45,
+      "drop_percent": 10,
+      "initial_price": 4.95,
+      "current_price": 4.95,
+      "last_checked_at": "2026-11-05T11:40:29+00:00",
+      "status": "ok",
+      "availability": "https://schema.org/InStock",
+      "evidence": "jsonld_product_offer",
+      "last_error": null,
+      "failure_count": 0,
+      "last_alert_price": null,
+      "created_at": "2026-11-05T11:40:29+00:00",
+      "price_history": [
+        {
+          "at": "2026-11-05T11:40:29+00:00",
+          "price": 4.95
+        }
+      ]
+    }
+  ]
 }
