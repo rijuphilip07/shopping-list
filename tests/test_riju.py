@@ -96,6 +96,44 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(result["alerts"], [])
         self.assertEqual(riju.load_data()["products"][0]["status"], "unavailable")
 
+    def _two_products(self):
+        base = {"currency": "AUD", "drop_percent": 10, "price_history": [], "failure_count": 0, "last_alert_price": None}
+        riju.save_data({"schema_version": 1, "products": [
+            {**base, "id": "a", "name": "Coles Full Cream Milk 3L", "url": "https://shop.example/milk",
+             "target_price": 4.45, "initial_price": 4.95, "current_price": 4.95},
+            {**base, "id": "b", "name": "Huggies Skin Protect Newborn Nappies Size 1 54 Pack", "url": "https://shop.example/nappies",
+             "target_price": 12.96, "initial_price": 14.40, "current_price": 14.40}]})
+
+    def test_summary_when_nothing_changed(self):
+        self._two_products()
+        prices = {"https://shop.example/milk": 4.95, "https://shop.example/nappies": 14.40}
+        with patch.object(riju, "scrape", side_effect=lambda url: {"status": "ok", "price": prices[url], "currency": "AUD"}):
+            result = riju.check_prices(SimpleNamespace(local_only=True))
+        msg = riju.summary_message(result)
+        self.assertEqual(result["alerts"], [])
+        self.assertTrue(msg.startswith("✅ Price check done: no price change (2 products)"))
+        self.assertIn("Coles Full Cream Milk 3L $4.95", msg)
+        self.assertIn("$14.40", msg)
+
+    def test_summary_shows_changes_and_failures_without_alert(self):
+        self._two_products()
+        def fake(url):
+            if "milk" in url:
+                return {"status": "ok", "price": 4.80, "currency": "AUD"}
+            raise RuntimeError("timed out")
+        with patch.object(riju, "scrape", side_effect=fake):
+            result = riju.check_prices(SimpleNamespace(local_only=True))
+        msg = riju.summary_message(result)
+        self.assertEqual(result["alerts"], [])
+        self.assertIn("🔄 Coles Full Cream Milk 3L: $4.95 → $4.80, target $4.45", msg)
+        self.assertIn("⚠️ Could not check Huggies Skin Protect Newbor", msg)
+
+    def test_quiet_without_summary_stays_silent(self):
+        args = riju.parser().parse_args(["check", "--quiet"])
+        self.assertFalse(args.summary)
+        args = riju.parser().parse_args(["check", "--quiet", "--summary", "--local-only"])
+        self.assertTrue(args.summary and args.quiet and args.local_only)
+
     def test_publish_updates_remote_main(self):
         def cmd(*args, cwd=None):
             return subprocess.run(args, cwd=cwd or self.root, check=True, capture_output=True, text=True)

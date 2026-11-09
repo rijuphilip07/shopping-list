@@ -527,7 +527,7 @@ def shopping(args):
 
 
 def check_prices(args):
-    alerts = []
+    alerts, changes, failed = [], [], []
     with lock_data():
         preflight(args.local_only)
         data = load_data()
@@ -551,6 +551,8 @@ def check_prices(args):
                 product["last_checked_at"] = now()
                 if product.get("initial_price") is None:
                     product["initial_price"] = price
+                if old is not None and old != price:
+                    changes.append({"name": product["name"], "old": old, "new": price, "target": threshold(product)})
                 if old != price:
                     product["price_history"].append({"at": now(), "price": price})
                     product["price_history"] = product["price_history"][-90:]
@@ -564,6 +566,7 @@ def check_prices(args):
                     product["last_alert_price"] = price
                     alerts.append(f"Price alert: {product['name']} — {product['currency']} {price:.2f} (target {limit:.2f})\n{product['url']}")
             except Exception as e:
+                failed.append(product["name"])
                 product["failure_count"] = product.get("failure_count", 0) + 1
                 product["status"] = "check_failed"
                 product["last_error"] = str(e)[:300]
@@ -572,7 +575,34 @@ def check_prices(args):
                     alerts.append(f"Price check needs attention: {product['name']} failed 3 times. {product['last_error']}\n{product['url']}")
         save_data(data)
         sync = publish(args.local_only)
-    return {"status": "checked", "sync": sync, "alerts": alerts, "count": len(data["products"])}
+    prices = [{"name": p["name"], "price": p.get("current_price"), "currency": p.get("currency")}
+              for p in data["products"]]
+    return {"status": "checked", "sync": sync, "alerts": alerts, "count": len(data["products"]),
+            "changes": changes, "failed": failed, "prices": prices}
+
+
+def short_name(name, limit=28):
+    name = " ".join(str(name or "").split())
+    return name if len(name) <= limit else name[:limit - 1].rstrip() + "…"
+
+
+def summary_message(result):
+    """One short message for a check with no alert, so silence never means 'all OK'."""
+    count = result.get("count", 0)
+    changes, failed = result.get("changes") or [], result.get("failed") or []
+    if not changes and not failed:
+        lines = [f"✅ Price check done: no price change ({count} products)"]
+    else:
+        lines = [f"Price check done ({count} products), no alerts"]
+        for c in changes:
+            target = f", target ${c['target']:.2f}" if c.get("target") is not None else ""
+            lines.append(f"🔄 {short_name(c['name'])}: ${c['old']:.2f} → ${c['new']:.2f}{target}")
+        for name in failed:
+            lines.append(f"⚠️ Could not check {short_name(name)} this time")
+    shown = [f"{short_name(p['name'])} ${p['price']:.2f}" for p in result.get("prices") or [] if p.get("price") is not None]
+    if shown:
+        lines.append(" · ".join(shown))
+    return "\n".join(lines)
 
 
 def parser():
@@ -611,6 +641,7 @@ def parser():
     for x in (a, r, t, c):
         x.add_argument("--local-only", action="store_true")
     c.add_argument("--quiet", action="store_true", help="Print only alerts; empty stdout means no Telegram notification")
+    c.add_argument("--summary", action="store_true", help="With --quiet: when there is no alert, print a short 'no price change' summary instead of nothing")
     return p
 
 
@@ -631,6 +662,8 @@ def main():
     if args.command == "check" and args.quiet:
         if result["alerts"]:
             print("\n\n".join(result["alerts"]))
+        elif getattr(args, "summary", False):
+            print(summary_message(result))
     else:
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
