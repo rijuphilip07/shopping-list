@@ -26,6 +26,7 @@ ROOT = Path(os.environ.get("RIJU_REPO_DIR", Path(__file__).resolve().parents[1])
 DATA = ROOT / "data" / "products.json"
 API = os.environ.get("CAMOFOX_URL", "http://127.0.0.1:9377").rstrip("/")
 USER_ID = "riju"
+RETRY_WAIT_S = 5  # wait before the one retry of a page that failed to open
 DEFAULT_POSTCODE = "3820"
 DEFAULT_STORES = ("jbhifi.com.au", "thegoodguys.com.au", "harveynorman.com.au",
                   "amazon.com.au", "officeworks.com.au")
@@ -526,6 +527,20 @@ def shopping(args):
     raise ValueError("Unknown shopping action")
 
 
+def scrape_with_retry(url):
+    """riju.scrape, retried once after a short wait if the page failed to open.
+
+    Shops that refuse us (HTTP 429/403) are not retried: we read pages politely.
+    """
+    try:
+        return scrape(url)
+    except (RuntimeError, OSError) as exc:
+        if "HTTP 429" in str(exc) or "HTTP 403" in str(exc):
+            raise
+        time.sleep(RETRY_WAIT_S)
+        return scrape(url)
+
+
 def check_prices(args):
     alerts, changes, failed = [], [], []
     with lock_data():
@@ -533,7 +548,7 @@ def check_prices(args):
         data = load_data()
         for product in data["products"]:
             try:
-                found = scrape(product["url"])
+                found = scrape_with_retry(product["url"])
                 if found["status"] != "ok" or found.get("price") is None:
                     raise RuntimeError(found["status"])
                 if found.get("currency") and found["currency"].upper() != product["currency"].upper():

@@ -49,9 +49,11 @@ class TrackerTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.old_root, self.old_data = riju.ROOT, riju.DATA
         riju.ROOT, riju.DATA = self.root, self.root / "data" / "products.json"
+        self.old_wait, riju.RETRY_WAIT_S = riju.RETRY_WAIT_S, 0
 
     def tearDown(self):
         riju.ROOT, riju.DATA = self.old_root, self.old_data
+        riju.RETRY_WAIT_S = self.old_wait
         self.tmp.cleanup()
 
     def test_add_check_alert_once_and_rearm(self):
@@ -133,6 +135,31 @@ class TrackerTest(unittest.TestCase):
         self.assertFalse(args.summary)
         args = riju.parser().parse_args(["check", "--quiet", "--summary", "--local-only"])
         self.assertTrue(args.summary and args.quiet and args.local_only)
+
+    def test_slow_page_is_retried_once_and_succeeds(self):
+        self._two_products()
+        calls = []
+        def flaky(url):
+            calls.append(url)
+            if "milk" in url and calls.count(url) == 1:
+                raise RuntimeError('Camofox HTTP 500: {"error":"tab create timed out after 30000ms"}')
+            return {"status": "ok", "price": 4.95 if "milk" in url else 14.40, "currency": "AUD"}
+        with patch.object(riju, "scrape", side_effect=flaky):
+            result = riju.check_prices(SimpleNamespace(local_only=True))
+        self.assertEqual(calls.count("https://shop.example/milk"), 2)
+        self.assertEqual(result["failed"], [])
+        self.assertEqual(riju.load_data()["products"][0]["failure_count"], 0)
+
+    def test_refused_page_is_not_retried(self):
+        self._two_products()
+        calls = []
+        def refuse(url):
+            calls.append(url)
+            raise RuntimeError("Product page returned HTTP 429")
+        with patch.object(riju, "scrape", side_effect=refuse):
+            result = riju.check_prices(SimpleNamespace(local_only=True))
+        self.assertEqual(len(calls), 2)  # one call per product, no retries
+        self.assertEqual(len(result["failed"]), 2)
 
     def test_publish_updates_remote_main(self):
         def cmd(*args, cwd=None):
