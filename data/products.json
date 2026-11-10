@@ -16,7 +16,7 @@
       "drop_percent": 10,
       "initial_price": 4.95,
       "current_price": 4.95,
-      "last_checked_at": "2026-11-10T04:00:36+00:00",
+      "last_checked_at": "2026-11-10T19:31:04+00:00",
       "status": "ok",
       "availability": "https://schema.org/InStock",
       "evidence": "jsonld_product_offer",
@@ -43,12 +43,12 @@
       "drop_percent": 10,
       "initial_price": 549.99,
       "current_price": 549.99,
-      "last_checked_at": "2026-11-10T04:01:41+00:00",
-      "status": "check_failed",
+      "last_checked_at": "2026-11-10T19:31:07+00:00",
+      "status": "ok",
       "availability": "https://schema.org/InStock",
       "evidence": "jsonld_product_offer",
-      "last_error": "Camofox HTTP 500: {\"error\":\"tab create timed out after 30000ms\",\"retryable\":false}",
-      "failure_count": 5,
+      "last_error": null,
+      "failure_count": 0,
       "last_alert_price": null,
       "created_at": "2026-11-05T11:44:20+00:00",
       "price_history": [
@@ -69,8 +69,8 @@
       "target_price": 12.96,
       "drop_percent": 10,
       "initial_price": 14.4,
-      "current_price": 14.4,
-      "last_checked_at": "2026-11-10T04:01:43+00:00",
+      "current_price": 24.0,
+      "last_checked_at": "2026-11-10T19:31:11+00:00",
       "status": "ok",
       "availability": "http://schema.org/InStock",
       "evidence": "jsonld_product_offer",
@@ -82,6 +82,10 @@
         {
           "at": "2026-11-05T11:59:17+00:00",
           "price": 14.4
+        },
+        {
+          "at": "2026-11-10T19:31:11+00:00",
+          "price": 24.0
         }
       ]
     }
