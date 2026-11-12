@@ -358,8 +358,102 @@ def extract_product(page):
             "price": None, "currency": None, "availability": None, "evidence": "no_structured_price"}
 
 
+# --- Shopify shops' own product data (Session 40, approved by Riju 12 Nov 2026) ---------------------------------
+# Every Shopify shop publishes /products/<handle>.js: the product with every size/variant, its name and price.
+# Only for Australian shops (prices in AUD). Anything unexpected -> None, and the normal page reading is used.
+SHOPIFY_FETCH_JS = "fetch(location.href, {credentials: 'omit'}).then(r => r.ok ? r.text() : '')"
+
+
+def shopify_json_url(url):
+    p = urllib.parse.urlsplit(url)
+    host = (p.hostname or "").lower()
+    if not host.endswith(".au"):
+        return None
+    m = re.fullmatch(r"(?:/collections/[^/]+)?/products/([A-Za-z0-9][A-Za-z0-9_.%-]*)", p.path.rstrip("/"))
+    if not m or m.group(1).endswith(".js") or m.group(1).endswith(".json"):
+        return None
+    return f"https://{host}/products/{m.group(1)}.js"
+
+
+def shopify_product(url):
+    """The shop's product data as a dict, or None (not Shopify / not readable)."""
+    json_url = shopify_json_url(url)
+    if not json_url:
+        return None
+    tab_id = new_tab()
+    try:
+        request("POST", tab_path(tab_id, "/navigate"), {"userId": USER_ID, "url": json_url})
+        page = request("POST", tab_path(tab_id, "/evaluate"), {"userId": USER_ID, "expression": SHOPIFY_FETCH_JS})
+        data = json.loads(page.get("result") or "") if page.get("ok") else None
+    finally:
+        with contextlib.suppress(Exception):
+            close_tab(tab_id)
+    if not isinstance(data, dict) or not isinstance(data.get("variants"), list) or not data["variants"]:
+        return None
+    return data
+
+
+def shopify_variant_price(variant):
+    value = variant.get("price")
+    if isinstance(value, int):  # .js gives cents
+        return money(Decimal(value) / 100)
+    return money(value)
+
+
+def from_shopify(data, url):
+    """Pick the variant for this link. Returns a scrape-style result."""
+    variants = [v for v in data["variants"] if isinstance(v, dict) and shopify_variant_price(v) is not None]
+    if not variants:
+        return None
+    wanted = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query).get("variant", [None])[0]
+    chosen = None
+    if wanted:
+        chosen = next((v for v in variants if str(v.get("id")) == wanted), None)
+        if chosen is None:
+            return None  # the link's size isn't in the data: let the page decide
+    elif len({shopify_variant_price(v) for v in variants}) == 1:
+        chosen = next((v for v in variants if v.get("available")), variants[0])
+    title = " ".join(str(data.get("title") or "").split())
+    if chosen is None:
+        sizes = ", ".join(f"{v.get('title')} ${shopify_variant_price(v):.2f}" for v in variants[:6])
+        return {"status": "needs_review", "name": title, "price": None, "currency": None, "availability": None,
+                "evidence": "several_sizes", "sizes": sizes}
+    vt = str(chosen.get("title") or "")
+    name = title if vt.lower() in ("", "default title") or vt.lower() in title.lower() else f"{title} - {vt}"
+    return {"status": "ok", "name": name, "price": shopify_variant_price(chosen), "currency": "AUD",
+            "availability": "https://schema.org/InStock" if chosen.get("available") else "https://schema.org/OutOfStock",
+            "evidence": "shopify_product_json"}
+
+
+def shopify_variant_for_size(url, wanted_size):
+    """Session 40: in a search, the variant whose name matches the size typed (e.g. "4kg") -> (exact link, result)."""
+    data = shopify_product(url)
+    if not data:
+        return None
+    want = re.sub(r"[^a-z0-9.]", "", wanted_size.lower())
+    size_re = re.compile(r"(?<![0-9.])" + re.escape(want) + r"(?![0-9])") if want else None
+    hits = [v for v in data["variants"] if isinstance(v, dict) and size_re
+            and size_re.search(re.sub(r"[^a-z0-9.]", "", str(v.get("title") or "").lower()))]
+    if len(hits) != 1:
+        return None
+    p = urllib.parse.urlsplit(url)
+    exact = urllib.parse.urlunsplit((p.scheme, p.netloc, p.path, f"variant={hits[0].get('id')}", ""))
+    result = from_shopify(data, exact)
+    return (exact, result) if result and result.get("status") == "ok" else None
+
+
 def scrape(url):
     url = public_url(url)
+    # Session 40: Shopify shops' own product data first (fast, exact sizes); the page if that isn't possible.
+    if shopify_json_url(url):
+        try:
+            data = shopify_product(url)
+            found = from_shopify(data, url) if data else None
+        except Exception:  # noqa: BLE001 - never let this path break normal reading
+            found = None
+        if found:
+            found.update({"url": url, "snapshot": "", "requested_postcode": configured_postcode(), "postcode_visible": False})
+            return found
     # Slow shop pages (12 Nov 2026): open an empty tab, then navigate (its time limit can be raised with
     # NAVIGATE_TIMEOUT_MS). If loading still times out, read what has loaded: product data comes first.
     tab_id = new_tab()

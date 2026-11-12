@@ -82,6 +82,80 @@ class VariantTest(unittest.TestCase):
         self.assertEqual(riju.extract_product(page)["price"], 10.0)
 
 
+class ShopifyTest(unittest.TestCase):
+    """Session 40: Shopify shops' own product data (sizes with names and prices)."""
+    data = {"title": "Royal Canin British Shorthair Dry Cat Food", "variants": [
+        {"id": 111, "title": "2kg", "price": 4790, "available": True},
+        {"id": 222, "title": "4kg", "price": 7699, "available": True},
+        {"id": 333, "title": "10kg", "price": 16035, "available": False}]}
+
+    def test_only_australian_product_links(self):
+        self.assertEqual(riju.shopify_json_url("https://yourpetpa.com.au/products/rc-bsh?variant=222"),
+                         "https://yourpetpa.com.au/products/rc-bsh.js")
+        self.assertEqual(riju.shopify_json_url("https://www.babykingdom.com.au/collections/prams/products/wave-3"),
+                         "https://www.babykingdom.com.au/products/wave-3.js")
+        self.assertIsNone(riju.shopify_json_url("https://au.momcozy.com/products/kleanpal"))  # not .au: currency unknown
+        self.assertIsNone(riju.shopify_json_url("https://www.coles.com.au/product/milk-123"))
+        self.assertIsNone(riju.shopify_json_url("https://shop.com.au/products/a/b"))
+
+    def test_size_in_the_link_is_used(self):
+        r = riju.from_shopify(self.data, "https://yourpetpa.com.au/products/rc-bsh?variant=222")
+        self.assertEqual((r["status"], r["price"], r["name"], r["evidence"]),
+                         ("ok", 76.99, "Royal Canin British Shorthair Dry Cat Food - 4kg", "shopify_product_json"))
+
+    def test_several_sizes_without_a_size_are_not_guessed(self):
+        r = riju.from_shopify(self.data, "https://yourpetpa.com.au/products/rc-bsh")
+        self.assertEqual((r["status"], r["price"], r["evidence"]), ("needs_review", None, "several_sizes"))
+        self.assertIn("4kg $76.99", r["sizes"])
+
+    def test_one_price_and_unknown_size(self):
+        one = {"title": "Wave 3 Pram", "variants": [{"id": 1, "title": "Default Title", "price": "1899.99", "available": True}]}
+        self.assertEqual(riju.from_shopify(one, "https://x.com.au/products/wave")["price"], 1899.99)
+        self.assertIsNone(riju.from_shopify(self.data, "https://x.com.au/products/rc?variant=999"))
+
+    def test_scrape_uses_shopify_data_and_falls_back_quietly(self):
+        calls = []
+        def fake_request(method, path, data=None):
+            calls.append((method, path, data))
+            if method == "POST" and path == "/tabs":
+                return {"tabId": "t1"}
+            if path.endswith("/navigate"):
+                return {"ok": True}
+            if path.endswith("/evaluate") and data["expression"] == riju.SHOPIFY_FETCH_JS:
+                return {"ok": True, "result": json.dumps(self.data)}
+            return {}
+        with patch.object(riju, "request", side_effect=fake_request):
+            r = riju.scrape("https://yourpetpa.com.au/products/rc-bsh?variant=222")
+        self.assertEqual((r["price"], r["evidence"]), (76.99, "shopify_product_json"))
+        self.assertEqual(calls[1][2]["url"], "https://yourpetpa.com.au/products/rc-bsh.js")
+
+        def not_shopify(method, path, data=None):
+            if method == "POST" and path == "/tabs":
+                return {"tabId": "t1"}
+            if path.endswith("/navigate"):
+                return {"ok": True}
+            if path.endswith("/evaluate") and data["expression"] == riju.SHOPIFY_FETCH_JS:
+                return {"ok": True, "result": "<html>Not found</html>"}
+            if path.endswith("/snapshot?userId=riju"):
+                return {"url": "https://petstock.com.au/products/rc", "snapshot": "x"}
+            if path.endswith("/evaluate"):
+                return {"ok": True, "result": {"title": "RC", "url": "https://petstock.com.au/products/rc",
+                        "jsonld": [{"@type": "Product", "name": "RC", "offers": {"price": "84.69", "priceCurrency": "AUD"}}]}}
+            return {}
+        with patch.object(riju, "request", side_effect=not_shopify):
+            r = riju.scrape("https://petstock.com.au/products/rc")
+        self.assertEqual((r["price"], r["evidence"]), (84.69, "jsonld_product_offer"))
+
+    def test_search_size_picks_the_variant(self):
+        with patch.object(riju, "shopify_product", return_value=self.data):
+            exact, r = riju.shopify_variant_for_size("https://yourpetpa.com.au/products/rc-bsh", "4kg")
+        self.assertEqual(exact, "https://yourpetpa.com.au/products/rc-bsh?variant=222")
+        self.assertEqual(r["price"], 76.99)
+        big = {"title": "x", "variants": [{"id": 1, "title": "14kg", "price": 100}, {"id": 2, "title": "4 kg", "price": 50}]}
+        with patch.object(riju, "shopify_product", return_value=big):
+            self.assertTrue(riju.shopify_variant_for_size("https://a.com.au/products/x", "4kg")[0].endswith("variant=2"))
+
+
 class TrackerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
