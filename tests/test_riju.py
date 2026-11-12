@@ -225,6 +225,8 @@ class TrackerTest(unittest.TestCase):
             calls.append((method, path, data))
             if method == "POST" and path == "/tabs":
                 return {"tabId": "tab-1", "navigationOk": True}
+            if method == "POST" and path.endswith("/navigate"):
+                return {"ok": True}
             if path.endswith("/snapshot?userId=riju"):
                 return {"url": "https://shop.example/camera", "snapshot": "Camera A"}
             if path.endswith("/evaluate"):
@@ -238,7 +240,43 @@ class TrackerTest(unittest.TestCase):
             found = riju.scrape("https://shop.example/camera")
         self.assertEqual((found["status"], found["price"], found["currency"]), ("ok", 79.95, "AUD"))
         self.assertEqual(found["requested_postcode"], "3820")
-        self.assertEqual([c[0] for c in calls], ["POST", "GET", "POST", "DELETE"])
+        self.assertEqual([c[0] for c in calls], ["POST", "POST", "GET", "POST", "DELETE"])
+        self.assertEqual(calls[1][1:], ("/tabs/tab-1/navigate", {"userId": "riju", "url": "https://shop.example/camera"}))
+
+    def test_slow_page_is_read_if_the_price_already_loaded(self):
+        def fake_request(method, path, data=None):
+            if method == "POST" and path == "/tabs":
+                return {"tabId": "tab-1"}
+            if path.endswith("/navigate"):
+                raise RuntimeError('Camofox HTTP 500: {"error":"Internal server error"}')
+            if path.endswith("/snapshot?userId=riju"):
+                return {"url": "https://slow.example/p", "snapshot": "Pram"}
+            if path.endswith("/evaluate"):
+                return {"ok": True, "result": {"title": "Pram", "url": "https://slow.example/p",
+                        "jsonld": [{"@type": "Product", "name": "Pram", "offers": {"price": "449", "priceCurrency": "AUD"}}]}}
+            return {}
+        with patch.object(riju, "request", side_effect=fake_request):
+            self.assertEqual(riju.scrape("https://slow.example/p")["price"], 449.0)
+
+    def test_slow_page_without_a_price_still_fails_and_refusals_are_not_read(self):
+        def make(nav_error):
+            def fake_request(method, path, data=None):
+                if method == "POST" and path == "/tabs":
+                    return {"tabId": "tab-1"}
+                if path.endswith("/navigate"):
+                    raise RuntimeError(nav_error)
+                if path.endswith("/snapshot?userId=riju"):
+                    return {"url": "https://slow.example/p", "snapshot": ""}
+                if path.endswith("/evaluate"):
+                    return {"ok": True, "result": {"title": "", "url": "https://slow.example/p"}}
+                return {}
+            return fake_request
+        with patch.object(riju, "request", side_effect=make("Camofox HTTP 500: timeout")):
+            with self.assertRaises(RuntimeError):
+                riju.scrape("https://slow.example/p")
+        with patch.object(riju, "request", side_effect=make("Camofox HTTP 429: too many")):
+            with self.assertRaisesRegex(RuntimeError, "429"):
+                riju.scrape("https://slow.example/p")
 
     def test_search_uses_postcode(self):
         args = SimpleNamespace(action="search", query="camera")

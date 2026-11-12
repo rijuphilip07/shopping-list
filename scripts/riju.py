@@ -360,8 +360,17 @@ def extract_product(page):
 
 def scrape(url):
     url = public_url(url)
-    tab_id = new_tab(url)
+    # Slow shop pages (12 Nov 2026): open an empty tab, then navigate (its time limit can be raised with
+    # NAVIGATE_TIMEOUT_MS). If loading still times out, read what has loaded: product data comes first.
+    tab_id = new_tab()
+    nav_error = None
     try:
+        try:
+            request("POST", tab_path(tab_id, "/navigate"), {"userId": USER_ID, "url": url})
+        except (RuntimeError, OSError) as exc:
+            if re.search(r"HTTP 4(?!08)\d\d", str(exc)):  # the shop refused / not found: don't read on
+                raise
+            nav_error = exc
         shot = snapshot(tab_id)
         page = request("POST", tab_path(tab_id, "/evaluate"), {"userId": USER_ID, "expression": PRICE_JS})
         if not page.get("ok"):
@@ -375,6 +384,8 @@ def scrape(url):
                     "name": data.get("title"), "price": None, "requested_postcode": configured_postcode(),
                     "postcode_visible": False, "snapshot": shot.get("snapshot", "")[:5000]}
         result = extract_product(data)
+        if nav_error is not None and result.get("status") != "ok":
+            raise nav_error  # page never loaded far enough: report the real problem
         result["url"] = public_url(data.get("url") or shot.get("url") or url)
         result["snapshot"] = (shot.get("snapshot") or "")[:5000]
         result["requested_postcode"] = configured_postcode()
