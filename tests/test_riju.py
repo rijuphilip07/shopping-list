@@ -42,6 +42,19 @@ class PriceParsingTest(unittest.TestCase):
         ]}
         self.assertEqual(riju.extract_product(page)["status"], "needs_review")
 
+    def test_same_product_listed_twice_is_one_product(self):
+        url = "https://www.babykingdom.com.au/products/silver-cross-wave-3-pram-caramel"
+        page = {"title": "Silver Cross Wave 3 Pram Caramel – Baby Kingdom", "url": url + "?_su_rec=x", "jsonld": [
+            {"@type": "Product", "name": "Silver Cross Wave 3 Pram Caramel", "url": url,
+             "offers": [{"@type": "Offer", "price": "1899.99", "priceCurrency": "AUD"}]},
+            {"@type": "Product", "name": "Silver Cross Wave 3 Pram Caramel", "url": url,
+             "offers": {"@type": "Offer", "price": "1,899.99", "priceCurrency": "AUD"}},
+        ]}
+        result = riju.extract_product(page)
+        self.assertEqual((result["status"], result["price"], result["currency"]), ("ok", 1899.99, "AUD"))
+        page["jsonld"][1]["offers"]["price"] = "1,799.99"  # same name, different price: still refuse
+        self.assertEqual(riju.extract_product(page)["status"], "needs_review")
+
 
 class TrackerTest(unittest.TestCase):
     def setUp(self):

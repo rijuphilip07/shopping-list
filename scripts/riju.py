@@ -264,6 +264,20 @@ def product_nodes(value):
             yield from product_nodes(value["@graph"])
 
 
+def same_product(nodes):
+    """True when every Product entry has the same name and one same price (shops like Shopify often repeat the product)."""
+    names, prices = set(), set()
+    for product in nodes:
+        names.add(" ".join(str(product.get("name") or "").lower().split()))
+        offers = product.get("offers") or []
+        for offer in [offers] if isinstance(offers, dict) else offers:
+            if isinstance(offer, dict):
+                value = money(offer.get("price") or offer.get("lowPrice"))
+                if value is not None:
+                    prices.add(value)
+    return len(names) == 1 and "" not in names and len(prices) == 1
+
+
 def extract_product(page):
     title = page.get("title") or ""
     meta = page.get("meta") or {}
@@ -275,6 +289,9 @@ def extract_product(page):
             product_url = urllib.parse.urlsplit(product.get("url") or product.get("@id") or "")
             if (product_url.hostname == page_url.hostname and product_url.path.rstrip("/") == page_url.path.rstrip("/")):
                 matches.append(product)
+        pool = matches or products
+        if len(matches) != 1 and len(pool) > 1 and same_product(pool):
+            matches = pool[:1]
         if len(matches) != 1:
             return {"status": "needs_review", "name": title, "price": None, "currency": None,
                     "availability": None, "evidence": "ambiguous_product_data"}
