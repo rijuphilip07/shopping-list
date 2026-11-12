@@ -26,6 +26,8 @@ ROOT = Path(os.environ.get("RIJU_REPO_DIR", Path(__file__).resolve().parents[1])
 DATA = ROOT / "data" / "products.json"
 API = os.environ.get("CAMOFOX_URL", "http://127.0.0.1:9377").rstrip("/")
 USER_ID = "riju"
+# Slow shop pages can take ~60 s to open in the browser (12 Nov 2026); wait a little longer than that.
+CAMOFOX_HTTP_TIMEOUT_S = 75
 RETRY_WAIT_S = 5  # wait before the one retry of a page that failed to open
 DEFAULT_POSTCODE = "3820"
 DEFAULT_STORES = ("jbhifi.com.au", "thegoodguys.com.au", "harveynorman.com.au",
@@ -104,7 +106,7 @@ def request(method: str, path: str, data=None):
     if os.environ.get("CAMOFOX_ACCESS_KEY"):
         headers["Authorization"] = "Bearer " + os.environ["CAMOFOX_ACCESS_KEY"]
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, data=body, headers=headers, method=method), timeout=45) as r:
+        with urllib.request.urlopen(urllib.request.Request(url, data=body, headers=headers, method=method), timeout=CAMOFOX_HTTP_TIMEOUT_S) as r:
             raw = r.read()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
