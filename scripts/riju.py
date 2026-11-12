@@ -264,6 +264,31 @@ def product_nodes(value):
             yield from product_nodes(value["@graph"])
 
 
+def offer_value(offer):
+    spec = offer.get("priceSpecification") or {}
+    if isinstance(spec, list):
+        spec = next((s for s in spec if isinstance(s, dict) and s.get("price")), {})
+    if not isinstance(spec, dict):
+        spec = {}
+    return money(offer.get("price") or offer.get("lowPrice") or spec.get("price")), spec
+
+
+def offer_for_page(offers, page_url):
+    """Several sizes/variants with different prices: only the offer that matches the exact link (e.g. ?variant=123
+    or .../product-variant-123) is trusted. Returns None when the link doesn't pick one size."""
+    page = urllib.parse.urlsplit(page_url or "")
+    page_variant = urllib.parse.parse_qs(page.query).get("variant", [None])[0]
+    hits = []
+    for offer in offers:
+        o = urllib.parse.urlsplit(str(offer.get("url") or ""))
+        o_variant = urllib.parse.parse_qs(o.query).get("variant", [None])[0]
+        if page_variant and o_variant == page_variant:
+            hits.append(offer)
+        elif o.path and o.path.rstrip("/") == page.path.rstrip("/") and "variant" in o.path.lower():
+            hits.append(offer)
+    return hits[0] if len(hits) == 1 else None
+
+
 def same_product(nodes):
     """True when every Product entry has the same name and one same price (shops like Shopify often repeat the product)."""
     names, prices = set(), set()
@@ -300,15 +325,18 @@ def extract_product(page):
         offers = product.get("offers") or []
         if isinstance(offers, dict):
             offers = [offers]
+        offers = [offer for offer in offers if isinstance(offer, dict)]
+        if len({offer_value(offer)[0] for offer in offers} - {None}) > 1:
+            chosen = offer_for_page(offers, page.get("url"))
+            if chosen is None:
+                return {"status": "needs_review", "name": product.get("name") or title, "price": None, "currency": None,
+                        "availability": None, "evidence": "several_sizes"}
+            value, spec = offer_value(chosen)
+            return {"status": "ok", "name": product.get("name") or title, "price": value,
+                    "currency": chosen.get("priceCurrency") or spec.get("priceCurrency") or meta.get("product:price:currency"),
+                    "availability": chosen.get("availability"), "evidence": "jsonld_variant_offer"}
         for offer in offers:
-            if not isinstance(offer, dict):
-                continue
-            spec = offer.get("priceSpecification") or {}
-            if isinstance(spec, list):
-                spec = next((s for s in spec if isinstance(s, dict) and s.get("price")), {})
-            if not isinstance(spec, dict):
-                spec = {}
-            value = money(offer.get("price") or offer.get("lowPrice") or spec.get("price"))
+            value, spec = offer_value(offer)
             if value is not None:
                 return {"status": "ok", "name": product.get("name") or title,
                         "price": value, "currency": offer.get("priceCurrency") or spec.get("priceCurrency") or meta.get("product:price:currency"),

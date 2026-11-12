@@ -56,6 +56,32 @@ class PriceParsingTest(unittest.TestCase):
         self.assertEqual(riju.extract_product(page)["status"], "needs_review")
 
 
+class VariantTest(unittest.TestCase):
+    page = {"title": "Royal Canin British Shorthair", "jsonld": [{"@type": "Product", "name": "Royal Canin British Shorthair", "offers": [
+        {"@type": "Offer", "price": 47.9, "priceCurrency": "AUD", "url": "https://shop.example/products/rc-bsh?variant=111"},
+        {"@type": "Offer", "price": 76.99, "priceCurrency": "AUD", "url": "https://shop.example/products/rc-bsh?variant=222"}]}],
+        "meta": {"og:price:amount": "47.90"}}
+
+    def test_several_sizes_without_a_size_link_is_not_guessed(self):
+        result = riju.extract_product(dict(self.page, url="https://shop.example/products/rc-bsh"))
+        self.assertEqual((result["status"], result["price"], result["evidence"]), ("needs_review", None, "several_sizes"))
+
+    def test_size_link_picks_that_size(self):
+        result = riju.extract_product(dict(self.page, url="https://shop.example/products/rc-bsh?variant=222"))
+        self.assertEqual((result["status"], result["price"], result["evidence"]), ("ok", 76.99, "jsonld_variant_offer"))
+
+    def test_variant_in_the_path(self):
+        page = {"title": "x", "url": "https://www.petstock.com.au/products/rc-bsh-variant-63", "jsonld": [{"@type": "Product", "name": "x", "offers": [
+            {"price": "84.69", "priceCurrency": "AUD", "url": "https://www.petstock.com.au/products/rc-bsh-variant-63"},
+            {"price": "56.49", "priceCurrency": "AUD", "url": "https://www.petstock.com.au/products/rc-bsh-variant-70"}]}]}
+        self.assertEqual(riju.extract_product(page)["price"], 84.69)
+
+    def test_one_price_many_offers_still_fine(self):
+        page = {"title": "x", "url": "https://shop.example/p", "jsonld": [{"@type": "Product", "name": "x", "offers": [
+            {"price": "10", "priceCurrency": "AUD"}, {"price": "10.00", "priceCurrency": "AUD"}]}]}
+        self.assertEqual(riju.extract_product(page)["price"], 10.0)
+
+
 class TrackerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
