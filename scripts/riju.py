@@ -275,6 +275,21 @@ def offer_value(offer):
     return money(offer.get("price") or offer.get("lowPrice") or spec.get("price")), spec
 
 
+def page_options(offers, page_url):
+    """Session 43: the choices on a several-options page, for "Choose your option" in the app.
+    Only offers with their own link on the same shop are offered (so the choice can be checked later)."""
+    host = urllib.parse.urlsplit(page_url or "").hostname
+    out = []
+    for offer in offers[:12]:
+        value = offer_value(offer)[0]
+        link = str(offer.get("url") or "")
+        if value is None or urllib.parse.urlsplit(link).hostname != host:
+            continue
+        title = " ".join(str(offer.get("name") or offer.get("sku") or "").split())[:80]
+        out.append({"title": title, "price": value, "available": "InStock" in str(offer.get("availability") or ""), "url": link})
+    return out
+
+
 def offer_for_page(offers, page_url):
     """Several sizes/variants with different prices: only the offer that matches the exact link (e.g. ?variant=123
     or .../product-variant-123) is trusted. Returns None when the link doesn't pick one size."""
@@ -332,7 +347,7 @@ def extract_product(page):
             chosen = offer_for_page(offers, page.get("url"))
             if chosen is None:
                 return {"status": "needs_review", "name": product.get("name") or title, "price": None, "currency": None,
-                        "availability": None, "evidence": "several_sizes"}
+                        "availability": None, "evidence": "several_sizes", "options": page_options(offers, page.get("url"))}
             value, spec = offer_value(chosen)
             return {"status": "ok", "name": product.get("name") or title, "price": value,
                     "currency": chosen.get("priceCurrency") or spec.get("priceCurrency") or meta.get("product:price:currency"),
@@ -416,8 +431,13 @@ def from_shopify(data, url):
     title = " ".join(str(data.get("title") or "").split())
     if chosen is None:
         sizes = ", ".join(f"{v.get('title')} ${shopify_variant_price(v):.2f}" for v in variants[:6])
+        p = urllib.parse.urlsplit(url)
+        options = [{"title": " ".join(str(v.get("title") or "").split())[:80], "price": shopify_variant_price(v),
+                    "available": bool(v.get("available")),
+                    "url": urllib.parse.urlunsplit((p.scheme, p.netloc, p.path, f"variant={v.get('id')}", ""))}
+                   for v in variants[:12]]
         return {"status": "needs_review", "name": title, "price": None, "currency": None, "availability": None,
-                "evidence": "several_sizes", "sizes": sizes}
+                "evidence": "several_sizes", "sizes": sizes, "options": options}
     vt = str(chosen.get("title") or "")
     name = title if vt.lower() in ("", "default title") or vt.lower() in title.lower() else f"{title} - {vt}"
     return {"status": "ok", "name": name, "price": shopify_variant_price(chosen), "currency": "AUD",

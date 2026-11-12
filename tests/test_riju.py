@@ -65,6 +65,8 @@ class VariantTest(unittest.TestCase):
     def test_several_sizes_without_a_size_link_is_not_guessed(self):
         result = riju.extract_product(dict(self.page, url="https://shop.example/products/rc-bsh"))
         self.assertEqual((result["status"], result["price"], result["evidence"]), ("needs_review", None, "several_sizes"))
+        self.assertEqual([(o["price"], o["url"]) for o in result["options"]],
+                         [(47.9, "https://shop.example/products/rc-bsh?variant=111"), (76.99, "https://shop.example/products/rc-bsh?variant=222")])
 
     def test_size_link_picks_that_size(self):
         result = riju.extract_product(dict(self.page, url="https://shop.example/products/rc-bsh?variant=222"))
@@ -107,6 +109,8 @@ class ShopifyTest(unittest.TestCase):
         r = riju.from_shopify(self.data, "https://yourpetpa.com.au/products/rc-bsh")
         self.assertEqual((r["status"], r["price"], r["evidence"]), ("needs_review", None, "several_sizes"))
         self.assertIn("4kg $76.99", r["sizes"])
+        self.assertEqual(r["options"][1], {"title": "4kg", "price": 76.99, "available": True,
+                                           "url": "https://yourpetpa.com.au/products/rc-bsh?variant=222"})
 
     def test_one_price_and_unknown_size(self):
         one = {"title": "Wave 3 Pram", "variants": [{"id": 1, "title": "Default Title", "price": "1899.99", "available": True}]}
